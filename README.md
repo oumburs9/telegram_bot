@@ -1,59 +1,111 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Telegram ID-Format Bot (MVP)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This Laravel app provides a Telegram bot workflow that converts uploaded National ID / Fayda PDF or image files into printable variants.
 
-## About Laravel
+Important boundary:
+- This tool is for document formatting/conversion only.
+- It does not verify authenticity.
+- It does not issue IDs.
+- It does not intentionally alter identity data.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Stack
+- Laravel 12 (PHP 8.2)
+- MySQL
+- Local storage only (`storage/app/private`)
+- Python CLI processor (no persistent Python service)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Generated Outputs
+- `normal.png`
+- `mirror.png`
+- `a4_color.pdf`
+- `a4_gray.pdf`
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Environment Variables
+Add these to `.env`:
 
-## Learning Laravel
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_API=https://api.telegram.org
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_MAX_FILE_SIZE=5242880
+TELEGRAM_CLEANUP_AFTER_HOURS=72
+TELEGRAM_PROCESS_TIMEOUT=120
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+PYTHON_BIN=python3
+PYTHON_PROCESSOR_PATH=processor/main.py
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Setup
+1. Install PHP dependencies:
 
-## Laravel Sponsors
+```bash
+composer install
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://laravel.com/partners).
+2. Configure your `.env` for MySQL and Telegram values.
 
-### Premium Partners
+3. Run migrations:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+php artisan migrate
+```
 
-## Contributing
+4. Set up Python dependencies:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r processor/requirements.txt
+```
 
-## Code of Conduct
+5. Run the app:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+php artisan serve
+```
 
-## Security Vulnerabilities
+## Telegram Webhook Endpoint
+- Endpoint: `POST /telegram/webhook`
+- Security: validates `X-Telegram-Bot-Api-Secret-Token` against `TELEGRAM_WEBHOOK_SECRET`
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Set webhook example:
 
-## License
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -d "url=https://your-domain.com/telegram/webhook" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Cleanup Command
+Delete old processing directories:
+
+```bash
+php artisan telegram:cleanup
+```
+
+Override retention window:
+
+```bash
+php artisan telegram:cleanup --hours=72
+```
+
+cPanel cron example (every hour):
+
+```bash
+0 * * * * /usr/local/bin/php /home/username/public_html/artisan telegram:cleanup --hours=72 >> /home/username/telegram_cleanup.log 2>&1
+```
+
+## Operational Checklist
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are set.
+- Webhook points to `https://your-domain.com/telegram/webhook`.
+- MySQL credentials are set and migrations are applied.
+- `storage/` is writable.
+- Python binary and `processor/main.py` are accessible.
+
+## Short Testing Checklist
+1. Send `/start` and `/help` to the bot.
+2. Upload one PDF file and verify all 4 outputs are returned.
+3. Upload one JPG or PNG file and verify all 4 outputs are returned.
+4. Verify DB rows are created in `telegram_users`, `processing_jobs`, and `generated_files`.
+5. Send unsupported file type and verify a friendly error response.
+6. Run `php artisan telegram:cleanup` and verify old job folders are removed.
